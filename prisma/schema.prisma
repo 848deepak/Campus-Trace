@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  STUDENT
+  ADMIN
+}
+
+enum ItemType {
+  LOST
+  FOUND
+}
+
+enum ItemStatus {
+  OPEN
+  MATCHED
+  RETURNED
+  ARCHIVED
+}
+
+enum MatchStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CLAIMED
+}
+
+enum ClaimStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+model User {
+  id                String         @id @default(cuid())
+  name              String
+  email             String         @unique
+  passwordHash      String
+  studentId         String         @unique
+  branch            String
+  year              Int
+  profileImage      String?
+  role              Role           @default(STUDENT)
+  emailVerified     Boolean        @default(false)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  items             Item[]
+  sentMessages      Message[]      @relation("SentMessages")
+  receivedMessages  Message[]      @relation("ReceivedMessages")
+  claimsRequested   Claim[]        @relation("ClaimRequester")
+  claimsResolved    Claim[]        @relation("ClaimResolver")
+  ratingsReceived   Rating[]       @relation("RatingTo")
+  ratingsGiven      Rating[]       @relation("RatingFrom")
+  notifications     Notification[]
+}
+
+model Item {
+  id                  String      @id @default(cuid())
+  type                ItemType
+  title               String
+  description         String
+  category            String
+  imageUrl            String
+  imageHash           String?
+  latitude            Float
+  longitude           Float
+  dateOccurred        DateTime
+  reward              Int?
+  contactPreference   String?
+  safeWithMe          Boolean     @default(false)
+  anonymous           Boolean     @default(false)
+  status              ItemStatus  @default(OPEN)
+  aiSuggestedCategory String?
+  qrCode              String?
+  qrToken             String?     @unique
+  userId              String
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  lostMatches         Match[]     @relation("LostItem")
+  foundMatches        Match[]     @relation("FoundItem")
+  claims              Claim[]
+
+  @@index([type, category, dateOccurred])
+  @@index([latitude, longitude])
+  @@index([status])
+}
+
+model Match {
+  id          String      @id @default(cuid())
+  lostItemId  String
+  foundItemId String
+  matchScore  Float
+  status      MatchStatus @default(PENDING)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  lostItem    Item        @relation("LostItem", fields: [lostItemId], references: [id], onDelete: Cascade)
+  foundItem   Item        @relation("FoundItem", fields: [foundItemId], references: [id], onDelete: Cascade)
+  messages    Message[]
+
+  @@unique([lostItemId, foundItemId])
+  @@index([status])
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  matchId    String
+  senderId   String
+  receiverId String
+  content    String
+  createdAt  DateTime @default(now())
+  match      Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  sender     User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([matchId, createdAt])
+}
+
+model Claim {
+  id                    String      @id @default(cuid())
+  itemId                String
+  requesterId           String
+  resolverId            String
+  verificationAnswers   Json
+  status                ClaimStatus @default(REQUESTED)
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  item                  Item        @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  requester             User        @relation("ClaimRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  resolver              User        @relation("ClaimResolver", fields: [resolverId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, status])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+}
+
+model Rating {
+  id         String   @id @default(cuid())
+  fromUserId String
+  toUserId   String
+  score      Int
+  comment    String?
+  createdAt  DateTime @default(now())
+  fromUser   User     @relation("RatingFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser     User     @relation("RatingTo", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@unique([fromUserId, toUserId])
+}
